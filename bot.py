@@ -1,21 +1,24 @@
-
 import os
 import re
 import json
 import requests
+from bs4 import BeautifulSoup
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 SEEN_FILE = "seen.json"
 
-SEARCH_QUERIES = [
-    "FC Mobile redeem code",
-    "FC Mobile codes",
-    "FC Mobile code",
+SOURCES = [
+    "https://www.fifamobileguide.com/",
+    "https://www.fcmobileforum.com/",
 ]
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+# Tìm các chuỗi có cả chữ và số, dài 6-20 ký tự
 CODE_PATTERN = re.compile(r"\b[A-Z0-9]{6,20}\b", re.IGNORECASE)
 
 
@@ -35,110 +38,116 @@ def save_seen(seen):
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-    response = requests.post(
+    requests.post(
         url,
         data={
             "chat_id": CHAT_ID,
             "text": message,
-            "disable_web_page_preview": False,
         },
         timeout=20,
     )
 
-    response.raise_for_status()
 
+def scan_page(url):
+    try:
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=20
+        )
 
-def search_youtube(query):
-    url = "https://www.googleapis.com/youtube/v3/search"
+        response.raise_for_status()
 
-    params = {
-        "part": "snippet",
-        "q": query,
-        "type": "video",
-        "order": "date",
-        "maxResults": 10,
-        "key": YOUTUBE_API_KEY,
-    }
+        soup = BeautifulSoup(response.text, "html.parser")
 
-    response = requests.get(url, params=params, timeout=20)
-    response.raise_for_status()
+        # Lấy toàn bộ nội dung chữ trên trang
+        text = soup.get_text(" ", strip=True)
 
-    return response.json().get("items", [])
+        return text
+
+    except Exception as e:
+        print(f"Lỗi khi quét {url}: {e}")
+        return ""
 
 
 def find_codes(text):
-    results = set()
+    codes = set()
 
-    for match in CODE_PATTERN.findall(text.upper()):
-        # Bỏ qua các từ quá phổ biến để giảm code giả
-        if match in {
-            "MOBILE",
-            "REDEEM",
-            "CODES",
-            "CODE",
-            "FC",
-            "FIFA",
-            "EA",
-            "SPORTS",
-        }:
+    for code in CODE_PATTERN.findall(text.upper()):
+
+        # Phải có cả chữ và số
+        if not any(c.isalpha() for c in code):
             continue
 
-        # Code thường có cả chữ và số
-        if any(c.isalpha() for c in match) and any(c.isdigit() for c in match):
-            results.add(match)
+        if not any(c.isdigit() for c in code):
+            continue
 
-    return results
+        # Bỏ những từ phổ biến dễ bị nhận nhầm
+        blacklist = {
+            "FCMOBILE",
+            "MOBILE2025",
+            "MOBILE2026",
+            "REDEEM",
+            "REWARDS",
+            "LATEST",
+            "UPDATE",
+            "FOLLOWER",
+        }
+
+        if code in blacklist:
+            continue
+
+        codes.add(code)
+
+    return codes
 
 
 def main():
+
     if not BOT_TOKEN:
         raise Exception("Thiếu BOT_TOKEN")
 
     if not CHAT_ID:
         raise Exception("Thiếu CHAT_ID")
 
-    if not YOUTUBE_API_KEY:
-        raise Exception("Thiếu YOUTUBE_API_KEY")
-
     seen = load_seen()
-    found_new = False
+    new_codes = []
 
-    for query in SEARCH_QUERIES:
-        videos = search_youtube(query)
+    for source in SOURCES:
 
-        for video in videos:
-            video_id = video["id"]["videoId"]
-            snippet = video["snippet"]
+        print(f"Đang quét: {source}")
 
-            title = snippet.get("title", "")
-            description = snippet.get("description", "")
-            channel = snippet.get("channelTitle", "")
+        text = scan_page(source)
 
-            text = f"{title}\n{description}"
+        if not text:
+            continue
 
-            codes = find_codes(text)
+        codes = find_codes(text)
 
-            for code in codes:
-                if code in seen:
-                    continue
+        for code in codes:
+
+            if code not in seen:
 
                 seen.add(code)
-                found_new = True
-
-                message = (
-                    "🚨 FC MOBILE CODE MỚI\n\n"
-                    f"🎁 Code: {code}\n"
-                    f"📺 Kênh: {channel}\n"
-                    f"🎬 {title}\n\n"
-                    f"https://www.youtube.com/watch?v={video_id}"
-                )
-
-                send_telegram(message)
+                new_codes.append((code, source))
 
     save_seen(seen)
 
-    if not found_new:
-        print("Không có code mới.")
+    # Gửi code mới
+    for code, source in new_codes:
+
+        message = (
+            "🚨 FC MOBILE CODE MỚI!\n\n"
+            f"🎁 CODE: {code}\n\n"
+            f"🌐 Nguồn: {source}"
+        )
+
+        send_telegram(message)
+
+        print(f"Đã gửi code: {code}")
+
+    if not new_codes:
+        print("Không tìm thấy code mới.")
 
 
 if __name__ == "__main__":
