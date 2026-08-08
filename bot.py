@@ -87,7 +87,6 @@ def scan_page(url):
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
-
         text = soup.get_text(" ", strip=True)
 
         return text
