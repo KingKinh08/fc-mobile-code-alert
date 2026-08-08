@@ -70,7 +70,6 @@ def send_telegram(message):
     print("Telegram response:", response.text)
 
     response.raise_for_status()
-        return False
 
     return True
 
