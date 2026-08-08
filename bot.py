@@ -66,8 +66,10 @@ def send_telegram(message):
         timeout=20,
     )
 
-    if not response.ok:
-        print(f"Lỗi Telegram: {response.status_code} - {response.text}")
+    print("Telegram status:", response.status_code)
+    print("Telegram response:", response.text)
+
+    response.raise_for_status()
         return False
 
     return True
@@ -123,6 +125,8 @@ def main():
 
     if not CHAT_ID:
         raise Exception("Thiếu CHAT_ID")
+        
+    send_telegram("✅ FC Mobile Bot đã kết nối Telegram thành công!")
 
     seen = load_seen()
     new_codes = []
