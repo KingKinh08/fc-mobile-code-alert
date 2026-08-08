@@ -11,34 +11,53 @@ SEEN_FILE = "seen.json"
 
 SOURCES = [
     "https://www.fifamobileguide.com/",
-    "https://www.fcmobileforum.com/",
 ]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0"
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    )
 }
 
-# Tìm các chuỗi có cả chữ và số, dài 6-20 ký tự
 CODE_PATTERN = re.compile(r"\b[A-Z0-9]{6,20}\b", re.IGNORECASE)
+
+BLACKLIST = {
+    "FCMOBILE",
+    "MOBILE2025",
+    "MOBILE2026",
+    "REDEEM",
+    "REWARDS",
+    "LATEST",
+    "UPDATE",
+    "FOLLOWER",
+    "ANDROID",
+    "IPHONE",
+    "DOWNLOAD",
+    "YOUTUBE",
+    "TWITTER",
+    "FACEBOOK",
+}
 
 
 def load_seen():
     try:
         with open(SEEN_FILE, "r", encoding="utf-8") as f:
             return set(json.load(f))
-    except:
+    except Exception:
         return set()
 
 
 def save_seen(seen):
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(seen), f, ensure_ascii=False, indent=2)
+        json.dump(sorted(seen), f, ensure_ascii=False, indent=2)
 
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-    requests.post(
+    response = requests.post(
         url,
         data={
             "chat_id": CHAT_ID,
@@ -47,9 +66,17 @@ def send_telegram(message):
         timeout=20,
     )
 
+    if not response.ok:
+        print(f"Lỗi Telegram: {response.status_code} - {response.text}")
+        return False
+
+    return True
+
 
 def scan_page(url):
     try:
+        print(f"Đang quét: {url}")
+
         response = requests.get(
             url,
             headers=HEADERS,
@@ -60,7 +87,6 @@ def scan_page(url):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Lấy toàn bộ nội dung chữ trên trang
         text = soup.get_text(" ", strip=True)
 
         return text
@@ -82,19 +108,7 @@ def find_codes(text):
         if not any(c.isdigit() for c in code):
             continue
 
-        # Bỏ những từ phổ biến dễ bị nhận nhầm
-        blacklist = {
-            "FCMOBILE",
-            "MOBILE2025",
-            "MOBILE2026",
-            "REDEEM",
-            "REWARDS",
-            "LATEST",
-            "UPDATE",
-            "FOLLOWER",
-        }
-
-        if code in blacklist:
+        if code in BLACKLIST:
             continue
 
         codes.add(code)
@@ -115,8 +129,6 @@ def main():
 
     for source in SOURCES:
 
-        print(f"Đang quét: {source}")
-
         text = scan_page(source)
 
         if not text:
@@ -124,16 +136,19 @@ def main():
 
         codes = find_codes(text)
 
+        print(f"Tìm thấy {len(codes)} chuỗi có khả năng là code.")
+
         for code in codes:
 
             if code not in seen:
-
-                seen.add(code)
                 new_codes.append((code, source))
 
-    save_seen(seen)
+    if not new_codes:
+        print("Không tìm thấy code mới.")
+        return
 
-    # Gửi code mới
+    sent_codes = []
+
     for code, source in new_codes:
 
         message = (
@@ -142,12 +157,15 @@ def main():
             f"🌐 Nguồn: {source}"
         )
 
-        send_telegram(message)
+        if send_telegram(message):
+            print(f"Đã gửi code: {code}")
+            sent_codes.append(code)
+        else:
+            print(f"Không gửi được code: {code}")
 
-        print(f"Đã gửi code: {code}")
-
-    if not new_codes:
-        print("Không tìm thấy code mới.")
+    # Chỉ đánh dấu đã thấy nếu Telegram gửi thành công
+    seen.update(sent_codes)
+    save_seen(seen)
 
 
 if __name__ == "__main__":
