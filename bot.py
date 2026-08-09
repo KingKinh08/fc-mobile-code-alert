@@ -10,7 +10,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 SEEN_FILE = "seen.json"
 
 SOURCES = [
-    "https://www.fifamobileguide.com/",
+    "https://www.fifamobileguide.com/redeem-code",
 ]
 
 HEADERS = {
