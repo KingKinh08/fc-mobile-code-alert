@@ -2,42 +2,64 @@ import os
 import re
 import json
 import requests
-from bs4 import BeautifulSoup
+import feedparser
+from datetime import datetime, timezone, timedelta
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 SEEN_FILE = "seen.json"
 
-SOURCES = [
-    "https://www.fifamobileguide.com/redeem-code",
-]
+# Chỉ nhận bài đăng trong 30 phút gần nhất
+MAX_AGE_MINUTES = 30
 
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    )
+    "User-Agent": "FCMobileCodeBot/1.0"
 }
 
-CODE_PATTERN = re.compile(r"\b[A-Z0-9]{6,20}\b", re.IGNORECASE)
+# Reddit RSS - nguồn có timestamp
+REDDIT_FEEDS = [
+    "https://www.reddit.com/r/FUTMobile/new/.rss",
+    "https://www.reddit.com/r/redeemgiftcodes/new/.rss",
+]
+
+CODE_PATTERN = re.compile(
+    r"\b[A-Z][A-Z0-9_-]{5,24}\b",
+    re.IGNORECASE
+)
 
 BLACKLIST = {
     "FCMOBILE",
+    "FUTMOBILE",
     "MOBILE2025",
     "MOBILE2026",
     "REDEEM",
     "REWARDS",
+    "REWARD",
     "LATEST",
     "UPDATE",
     "FOLLOWER",
+    "FOLLOWERS",
+    "WEBSITE",
+    "TELEGRAM",
+    "INSTAGRAM",
+    "FACEBOOK",
+    "DISCORD",
+    "YOUTUBE",
+    "TWITTER",
+    "REDDIT",
     "ANDROID",
     "IPHONE",
     "DOWNLOAD",
-    "YOUTUBE",
-    "TWITTER",
-    "FACEBOOK",
+    "PLAYER",
+    "PLAYERS",
+    "GAMES",
+    "GAME",
+    "CODE",
+    "CODES",
+    "NEW",
+    "FC",
+    "FIFA",
 }
 
 
@@ -74,84 +96,143 @@ def send_telegram(message):
     return True
 
 
-def scan_page(url):
-    try:
-        print(f"Đang quét: {url}")
+def extract_codes(text):
+    """
+    Tìm các chuỗi có khả năng là FC Mobile redeem code.
+    """
 
-        response = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=20
-        )
-
-        response.raise_for_status()
-
-        soup = BeautifulSoup(response.text, "html.parser")
-        text = soup.get_text(" ", strip=True)
-
-        return text
-
-    except Exception as e:
-        print(f"Lỗi khi quét {url}: {e}")
-        return ""
-
-
-def find_codes(text):
     codes = set()
 
     text_upper = text.upper()
 
-    blacklist = {
-        "FCMOBILE",
-        "FCMOBILE2025",
-        "FCMOBILE2026",
-        "MOBILE2025",
-        "MOBILE2026",
-        "REDEEM",
-        "REWARDS",
-        "REWARD",
-        "LATEST",
-        "UPDATE",
-        "FOLLOWER",
-        "FOLLOWERS",
-        "WEBSITE",
-        "TELEGRAM",
-        "INSTAGRAM",
-        "FACEBOOK",
-        "DISCORD",
-        "YOUTUBE",
-        "COPY",
-        "NEW",
-        "GAMES",
-        "STARS",
-        "PLAYER",
-        "PLAYERS",
-    }
-
-    matches = re.findall(
-        r"\b[A-Z0-9][A-Z0-9_-]{5,24}\b",
-        text_upper
-    )
+    matches = CODE_PATTERN.findall(text_upper)
 
     for code in matches:
 
-        code = code.upper().strip()
+        code = code.strip()
 
-        # Không lấy số thuần
+        if code in BLACKLIST:
+            continue
+
         if code.isdigit():
             continue
 
-        # Không lấy blacklist
-        if code in blacklist:
+        # Phải có ít nhất một chữ
+        if not any(c.isalpha() for c in code):
             continue
 
-        # Code phải có ít nhất một chữ
-        if not any(c.isalpha() for c in code):
+        # Loại các chuỗi quá giống từ thông thường
+        if len(code) < 6:
             continue
 
         codes.add(code)
 
     return codes
+
+
+def get_entry_time(entry):
+    """
+    Lấy thời gian bài Reddit được đăng.
+    """
+
+    try:
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
+            return datetime(
+                *entry.published_parsed[:6],
+                tzinfo=timezone.utc
+            )
+
+        if hasattr(entry, "updated_parsed") and entry.updated_parsed:
+            return datetime(
+                *entry.updated_parsed[:6],
+                tzinfo=timezone.utc
+            )
+
+    except Exception as e:
+        print("Không đọc được thời gian:", e)
+
+    return None
+
+
+def scan_reddit():
+    """
+    Quét Reddit và chỉ lấy bài trong 30 phút gần nhất.
+    """
+
+    results = []
+
+    now = datetime.now(timezone.utc)
+
+    for feed_url in REDDIT_FEEDS:
+
+        print(f"Đang quét Reddit: {feed_url}")
+
+        try:
+            response = requests.get(
+                feed_url,
+                headers=HEADERS,
+                timeout=20
+            )
+
+            response.raise_for_status()
+
+            feed = feedparser.parse(response.content)
+
+            for entry in feed.entries:
+
+                published_time = get_entry_time(entry)
+
+                if not published_time:
+                    continue
+
+                age = now - published_time
+
+                # Bài trong tương lai do lỗi timestamp
+                if age.total_seconds() < 0:
+                    continue
+
+                # QUAN TRỌNG:
+                # Chỉ nhận bài <= 30 phút
+                if age > timedelta(minutes=MAX_AGE_MINUTES):
+                    continue
+
+                title = entry.get("title", "")
+                summary = entry.get("summary", "")
+                link = entry.get("link", "")
+
+                content = f"{title} {summary}"
+
+                # Chỉ quan tâm bài có liên quan FC Mobile
+                content_upper = content.upper()
+
+                if not any(
+                    keyword in content_upper
+                    for keyword in [
+                        "FC MOBILE",
+                        "FCMOBILE",
+                        "FUT MOBILE",
+                        "REDEEM CODE",
+                        "REDEEM",
+                    ]
+                ):
+                    continue
+
+                codes = extract_codes(content)
+
+                for code in codes:
+
+                    results.append({
+                        "code": code,
+                        "published": published_time,
+                        "link": link,
+                        "title": title,
+                    })
+
+        except Exception as e:
+            print(f"Lỗi Reddit: {e}")
+
+    return results
+
 
 def main():
 
@@ -160,52 +241,94 @@ def main():
 
     if not CHAT_ID:
         raise Exception("Thiếu CHAT_ID")
-        
-    send_telegram("✅ FC Mobile Bot đã kết nối Telegram thành công!")
+
+    print("====================================")
+    print("FC MOBILE CODE BOT")
+    print("Chỉ nhận code trong 30 phút gần nhất")
+    print("====================================")
 
     seen = load_seen()
-    new_codes = []
 
-    for source in SOURCES:
+    results = scan_reddit()
 
-        text = scan_page(source)
+    print(f"Tìm thấy {len(results)} code tiềm năng.")
 
-        if not text:
+    new_results = []
+
+    for item in results:
+
+        code = item["code"]
+
+        if code in seen:
             continue
 
-        codes = find_codes(text)
+        new_results.append(item)
 
-        print(f"Tìm thấy {len(codes)} chuỗi có khả năng là code.")
-
-        for code in codes:
-
-            if code not in seen:
-                new_codes.append((code, source))
-
-    if not new_codes:
-        print("Không tìm thấy code mới.")
+    if not new_results:
+        print("Không có code mới trong 30 phút gần nhất.")
         return
 
-    sent_codes = []
+    # Loại trùng code nếu nhiều bài đăng cùng chứa code
+    unique = {}
 
-    for code, source in new_codes:
+    for item in new_results:
 
-        message = (
-            "🚨 FC MOBILE CODE MỚI!\n\n"
-            f"🎁 CODE: {code}\n\n"
-            f"🌐 Nguồn: {source}"
+        code = item["code"]
+
+        if code not in unique:
+            unique[code] = item
+
+    new_results = list(unique.values())
+
+    # Gửi một tin duy nhất
+    lines = [
+        "🚨 FC MOBILE CODE MỚI",
+        "",
+        "🎁 Code vừa được phát hiện:",
+        ""
+    ]
+
+    for item in new_results:
+
+        code = item["code"]
+
+        age_minutes = int(
+            (datetime.now(timezone.utc) - item["published"])
+            .total_seconds() / 60
         )
 
+        lines.append(f"🎁 {code}")
+        lines.append(
+            f"🕐 Khoảng {age_minutes} phút trước"
+        )
+
+    lines.append("")
+    lines.append("⚡ Hãy nhập code ngay.")
+    lines.append("")
+    lines.append("Nguồn: Reddit")
+
+    message = "\n".join(lines)
+
+    try:
+
         if send_telegram(message):
-            print(f"Đã gửi code: {code}")
-            sent_codes.append(code)
-        else:
-            print(f"Không gửi được code: {code}")
 
-    # Chỉ đánh dấu đã thấy nếu Telegram gửi thành công
-    seen.update(sent_codes)
-    save_seen(seen)
+            for item in new_results:
+                seen.add(item["code"])
 
+            save_seen(seen)
+
+            print(
+                f"Đã gửi {len(new_results)} code mới."
+            )
+
+    except Exception as e:
+
+        print("Không gửi được Telegram:", e)
+
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
