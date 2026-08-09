@@ -215,17 +215,15 @@ def get_entry_time(entry):
 
 def extract_codes(text):
     """
-    Tìm FC Mobile redeem code.
-    Ưu tiên chuỗi có cả chữ và số,
-    đồng thời loại bỏ các từ Reddit thông thường.
+    Chỉ nhận code khi có dấu hiệu rõ ràng là redeem code.
+    Không quét tất cả ID/ngẫu nhiên trong RSS.
     """
 
     codes = set()
-
     text_upper = text.upper()
 
-    # Các từ chắc chắn không phải redeem code
-    extra_blacklist = {
+    # Các từ chắc chắn không phải code
+    blacklist = BLACKLIST | {
         "COMMENTS",
         "SUBMITTED",
         "PREVIEW",
@@ -241,92 +239,53 @@ def extract_codes(text):
         "CONTROL",
         "ALWAYS",
         "PEACEFULLY",
-        "HOW",
-        "WHAT",
-        "THIS",
-        "THAT",
-        "WHO",
-        "REPLACE",
-        "PLAYERS",
-        "PLAYER",
         "MOBILE",
-        "FUTMOBILE",
         "FCMOBILE",
+        "FUTMOBILE",
         "REDEEM",
         "REWARD",
         "REWARDS",
         "CODE",
         "CODES",
-        "NEW",
-        "UPDATE",
-        "LATEST",
     }
 
-    blacklist = BLACKLIST | extra_blacklist
-
-    # -------------------------------------------------
-    # 1. Ưu tiên tìm code đứng sau các từ khóa rõ ràng
-    # -------------------------------------------------
-
-    labelled_patterns = [
-        r"(?:CODE|REDEEM\s*CODE|REWARD\s*CODE)\s*[:\-]?\s*([A-Z0-9-]{6,24})",
-        r"(?:CODE\s*IS|CODE\s*HERE)\s*[:\-]?\s*([A-Z0-9-]{6,24})",
-    ]
-
-    for pattern in labelled_patterns:
-
-        matches = re.findall(pattern, text_upper)
-
-        for code in matches:
-
-            code = code.strip("-")
-
-            if code in blacklist:
-                continue
-
-            if code.isdigit():
-                continue
-
-            if not any(c.isalpha() for c in code):
-                continue
-
-            codes.add(code)
-
-    # -------------------------------------------------
-    # 2. Tìm các chuỗi có dạng code trong toàn bộ text
-    # -------------------------------------------------
-
-    matches = re.findall(
-        r"\b[A-Z0-9-]{6,24}\b",
-        text_upper
+    # Chỉ tìm code gần các từ khóa liên quan
+    code_context = re.compile(
+        r"(?:"
+        r"CODE"
+        r"|REDEEM"
+        r"|REDEEM CODE"
+        r"|REWARD CODE"
+        r"|GIFT CODE"
+        r"|NEW CODE"
+        r"|CODE IS"
+        r"|CODE:"
+        r")"
+        r".{0,80}?"
+        r"\b([A-Z0-9-]{6,24})\b",
+        re.IGNORECASE
     )
+
+    matches = code_context.findall(text_upper)
 
     for code in matches:
 
         code = code.strip("-")
 
-        # Không lấy số thuần
-        if code.isdigit():
-            continue
-
-        # Không lấy blacklist
         if code in blacklist:
             continue
 
-        # Phải có chữ
+        if code.isdigit():
+            continue
+
         if not any(c.isalpha() for c in code):
             continue
 
-        # Code thường có cả chữ và số.
-        # Điều kiện này giúp loại phần lớn từ tiếng Anh thông thường.
-        has_letter = any(c.isalpha() for c in code)
-        has_number = any(c.isdigit() for c in code)
-
-        if not (has_letter and has_number):
+        # Code phải có cả chữ và số
+        if not any(c.isalpha() for c in code):
             continue
 
-        # Không nhận chuỗi quá ngắn
-        if len(code) < 6:
+        if not any(c.isdigit() for c in code):
             continue
 
         codes.add(code)
