@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Python packages
-  run: |
+        run: |
     python -m pip install -r requirements.txt
 
       - name: Run bot
