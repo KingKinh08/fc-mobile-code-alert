@@ -29,7 +29,6 @@ HEADERS = {
 
 REDDIT_FEEDS = [
     "https://www.reddit.com/r/FUTMobile/new/.rss",
-    "https://www.reddit.com/r/redeemgiftcodes/new/.rss",
 ]
 
 
