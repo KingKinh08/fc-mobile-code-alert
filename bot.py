@@ -215,78 +215,94 @@ def get_entry_time(entry):
 
 def extract_codes(text):
     """
-    Lọc các chuỗi có khả năng là FC Mobile redeem code.
-    Ưu tiên chuỗi giống code thật, loại ID/token/chữ thông thường.
+    Chỉ lấy code khi nó xuất hiện gần từ khóa liên quan đến redeem code.
+    Không lấy các chuỗi ID/token ngẫu nhiên của Reddit.
     """
 
     codes = set()
 
     text_upper = text.upper()
 
-    matches = CODE_PATTERN.findall(text_upper)
+    # Từ khóa phải xuất hiện gần code
+    code_keywords = [
+        "CODE",
+        "REDEEM",
+        "REDEEM CODE",
+        "REDEEMCODE",
+        "GIFT CODE",
+        "GIFT",
+        "REWARD CODE",
+    ]
 
-    for code in matches:
+    # Chia text thành các dòng/đoạn nhỏ
+    parts = re.split(r"[\n\r]+", text_upper)
 
-        code = code.strip()
+    for part in parts:
 
-        # 1. Không lấy blacklist
-        if code in BLACKLIST:
+        # Nếu dòng không nói gì về code/redeem thì bỏ qua
+        if not any(keyword in part for keyword in code_keywords):
             continue
 
-        # 2. Không lấy chuỗi chỉ toàn số
-        if code.isdigit():
-            continue
+        matches = CODE_PATTERN.findall(part)
 
-        # 3. Phải có cả chữ và số
-        has_letter = any(c.isalpha() for c in code)
-        has_digit = any(c.isdigit() for c in code)
+        for code in matches:
 
-        if not has_letter or not has_digit:
-            continue
+            code = code.strip().upper()
 
-        # 4. Code quá ngắn
-        if len(code) < 6:
-            continue
+            # Blacklist
+            if code in BLACKLIST:
+                continue
 
-        # 5. Loại chuỗi có quá nhiều dấu _
-        if code.count("_") >= 2:
-            continue
+            # Chỉ số
+            if code.isdigit():
+                continue
 
-        # 6. Loại chuỗi giống Reddit ID
-        if code.startswith(("1V", "1W", "1X", "1Y", "1Z")):
-            continue
+            # Phải có cả chữ và số
+            if not any(c.isalpha() for c in code):
+                continue
 
-        # 7. Loại chuỗi giống ID/token dài
-        if len(code) >= 14:
-            continue
+            if not any(c.isdigit() for c in code):
+                continue
 
-        # 8. Không lấy các từ phổ biến
-        common_words = {
-            "COMMENTS",
-            "SUBMITTED",
-            "PREVIEW",
-            "EXTERNAL",
-            "ACTUALLY",
-            "RECENTLY",
-            "AGAINST",
-            "NORMAL",
-            "SCHOOL",
-            "PLAYERS",
-            "PLAYER",
-            "DEVELOPERS",
-            "EVERYONE",
-            "ALWAYS",
-            "SINGLE",
-            "CONTROL",
-            "PERFORM",
-            "WORKED",
-            "REPLACE",
-        }
+            # Độ dài hợp lý
+            if len(code) < 6 or len(code) > 20:
+                continue
 
-        if code in common_words:
-            continue
+            # Loại chuỗi có nhiều dấu _
+            if code.count("_") >= 2:
+                continue
 
-        codes.add(code)
+            # Loại Reddit ID/token thường gặp
+            if code.startswith(("1V", "1W", "1X", "1Y", "1Z")):
+                continue
+
+            # Loại chuỗi có dạng ID ngẫu nhiên quá dài
+            if len(code) >= 15:
+                continue
+
+            # Loại một số từ thông thường
+            if code in {
+                "COMMENTS",
+                "SUBMITTED",
+                "PREVIEW",
+                "EXTERNAL",
+                "RECENTLY",
+                "ACTUALLY",
+                "AGAINST",
+                "NORMAL",
+                "SCHOOL",
+                "PLAYER",
+                "PLAYERS",
+                "DEVELOPERS",
+                "EVERYONE",
+                "CONTROL",
+                "PERFORM",
+                "WORKED",
+                "REPLACE",
+            }:
+                continue
+
+            codes.add(code)
 
     return codes
 
