@@ -392,7 +392,7 @@ def scan_reddit():
                 )
 
                 content = (
-                    f"{title} {summary}"
+                    f"{title}\n{summary}"
                 )
 
                 content_upper = (
