@@ -216,90 +216,77 @@ def get_entry_time(entry):
 
 def extract_codes(text):
     """
-    Tìm FC Mobile redeem code với bộ lọc chặt hơn.
-    Chỉ lấy code xuất hiện gần các từ khóa liên quan đến redeem code.
+    Chỉ tìm code trong nội dung có liên quan trực tiếp đến redeem code.
+    Hạn chế nhận các từ Reddit thông thường.
     """
 
     codes = set()
 
     text_upper = text.upper()
 
-    # Các từ khóa báo hiệu đoạn văn đang nói về redeem code
-    code_keywords = [
-        "REDEEM CODE",
-        "REDEEM",
-        "CODE",
-        "CODES",
-        "GIFT CODE",
-        "REWARD CODE",
-        "REWARD",
-    ]
+    # Chỉ phân tích những đoạn có dấu hiệu nói về redeem code
+    sentences = re.split(r"[\n.!?]+", text_upper)
 
-    # Nếu bài hoàn toàn không nói về code thì bỏ qua
-    if not any(keyword in text_upper for keyword in code_keywords):
-        return codes
+    for sentence in sentences:
 
-    # Tìm các chuỗi có dạng code
-    matches = re.findall(
-        r"\b[A-Z0-9][A-Z0-9_-]{7,24}\b",
-        text_upper
-    )
-
-    for code in matches:
-
-        code = code.strip()
-
-        # Blacklist
-        if code in BLACKLIST:
+        if not any(keyword in sentence for keyword in [
+            "CODE",
+            "REDEEM",
+            "REDEEM CODE",
+            "REWARD CODE",
+            "GIFT CODE",
+        ]):
             continue
 
-        # Không nhận số thuần
-        if code.isdigit():
-            continue
+        # Code FC Mobile thường là chuỗi chữ/số viết hoa.
+        # Không cho phép dấu "_" để tránh nhận tiêu đề Reddit.
+        matches = re.findall(
+            r"\b[A-Z0-9-]{6,24}\b",
+            sentence
+        )
 
-        # Phải có chữ
-        if not any(c.isalpha() for c in code):
-            continue
+        for code in matches:
 
-        # Không nhận các từ thông thường
-        if code in {
-            "COMMENTS",
-            "SUBMITTED",
-            "PREVIEW",
-            "RECENTLY",
-            "ACTUALLY",
-            "EVERYONE",
-            "AGAINST",
-            "EXTERNAL",
-            "NORMAL",
-            "WORKED",
-            "SINGLE",
-            "ALWAYS",
-            "PEACEFULLY",
-            "CONTROL",
-            "DEVELOPERS",
-            "PLAYERS",
-            "PLAYER",
-            "BICYCLE",
-            "SCHOOL",
-            "OVERPRICED",
-            "FINESSE",
-            "OWNERS",
-            "REPLACE",
-            "FOLLOWERS",
-            "FOLLOWER",
-        }:
-            continue
+            code = code.strip("-")
 
-        # Code hợp lệ phải có ít nhất 8 ký tự
-        if len(code) < 8:
-            continue
+            # Không nhận số thuần
+            if code.isdigit():
+                continue
 
-        # Nếu code có dấu _ hoặc - thì vẫn cho phép
-        codes.add(code)
+            # Không nhận chuỗi không có chữ
+            if not any(c.isalpha() for c in code):
+                continue
+
+            # Không nhận blacklist
+            if code in BLACKLIST:
+                continue
+
+            # Không nhận những từ quá phổ biến
+            if code in {
+                "COMMENTS",
+                "SUBMITTED",
+                "PREVIEW",
+                "NORMAL",
+                "ACTUALLY",
+                "RECENTLY",
+                "OVERPRICED",
+                "DEVELOPERS",
+                "EVERYONE",
+                "AGAINST",
+                "EXTERNAL",
+                "SINGLE",
+                "CONTROL",
+                "ALWAYS",
+                "PLAYER",
+                "PLAYERS",
+                "GAMES",
+                "GAME",
+            }:
+                continue
+
+            codes.add(code)
 
     return codes
-
 
 # =========================================================
 # VALIDATE CODE
