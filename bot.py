@@ -99,19 +99,66 @@ def scan_page(url):
 def find_codes(text):
     codes = set()
 
-    for code in CODE_PATTERN.findall(text.upper()):
+    text_upper = text.upper()
 
-        # Phải có cả chữ và số
-        if not any(c.isalpha() for c in code):
+    sentences = re.split(r"[.!?\n]+", text_upper)
+
+    keywords = [
+        "CODE",
+        "REDEEM",
+        "REWARD",
+        "GIFT",
+    ]
+
+    blacklist = {
+        "FCMOBILE",
+        "FCMOBILE2025",
+        "FCMOBILE2026",
+        "MOBILE2025",
+        "MOBILE2026",
+        "REDEEM",
+        "REWARDS",
+        "REWARD",
+        "LATEST",
+        "UPDATE",
+        "FOLLOWER",
+        "FOLLOWERS",
+        "WEBSITE",
+        "TELEGRAM",
+        "INSTAGRAM",
+        "FACEBOOK",
+        "DISCORD",
+        "YOUTUBE",
+    }
+
+    for sentence in sentences:
+
+        # Chỉ tìm trong những đoạn có liên quan đến code
+        if not any(keyword in sentence for keyword in keywords):
             continue
 
-        if not any(c.isdigit() for c in code):
-            continue
+        matches = re.findall(
+            r"\b[A-Z0-9][A-Z0-9_-]{5,24}\b",
+            sentence
+        )
 
-        if code in BLACKLIST:
-            continue
+        for code in matches:
 
-        codes.add(code)
+            code = code.upper()
+
+            # Không nhận chuỗi chỉ toàn số
+            if code.isdigit():
+                continue
+
+            # Không nhận blacklist
+            if code in blacklist:
+                continue
+
+            # Phải có ít nhất một chữ
+            if not any(c.isalpha() for c in code):
+                continue
+
+            codes.add(code)
 
     return codes
 
