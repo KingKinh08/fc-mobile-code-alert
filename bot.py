@@ -215,52 +215,46 @@ def get_entry_time(entry):
 
 def extract_codes(text):
     """
-    Chỉ lấy code khi nó xuất hiện gần từ khóa liên quan đến redeem code.
-    Không lấy các chuỗi ID/token ngẫu nhiên của Reddit.
+    Tìm redeem code nằm gần các từ khóa CODE / REDEEM CODE.
+    Không quét toàn bộ bài để tránh bắt ID Reddit và chuỗi ngẫu nhiên.
     """
 
     codes = set()
 
     text_upper = text.upper()
 
-    # Từ khóa phải xuất hiện gần code
-    code_keywords = [
-        "CODE",
-        "REDEEM",
-        "REDEEM CODE",
-        "REDEEMCODE",
-        "GIFT CODE",
-        "GIFT",
-        "REWARD CODE",
+    patterns = [
+        r"(?:REDEEM\s+CODE|REDEEMCODE|REDEEM)\s*[:\-=\s]+([A-Z0-9_-]{6,20})",
+        r"(?:GIFT\s+CODE|GIFT)\s*[:\-=\s]+([A-Z0-9_-]{6,20})",
+        r"(?:REWARD\s+CODE|REWARD)\s*[:\-=\s]+([A-Z0-9_-]{6,20})",
+        r"\bCODE\s*[:\-=\s]+([A-Z0-9_-]{6,20})",
+        r"\bCODES?\s*[:\-=\s]+([A-Z0-9_-]{6,20})",
     ]
 
-    # Chia text thành các dòng/đoạn nhỏ
-    parts = re.split(r"[\n\r]+", text_upper)
+    for pattern in patterns:
 
-    for part in parts:
-
-        # Nếu dòng không nói gì về code/redeem thì bỏ qua
-        if not any(keyword in part for keyword in code_keywords):
-            continue
-
-        matches = CODE_PATTERN.findall(part)
+        matches = re.findall(
+            pattern,
+            text_upper
+        )
 
         for code in matches:
 
-            code = code.strip().upper()
+            code = code.strip()
 
-            # Blacklist
+            # Không lấy blacklist
             if code in BLACKLIST:
                 continue
 
-            # Chỉ số
+            # Không lấy số thuần
             if code.isdigit():
                 continue
 
-            # Phải có cả chữ và số
+            # Phải có chữ
             if not any(c.isalpha() for c in code):
                 continue
 
+            # Phải có số
             if not any(c.isdigit() for c in code):
                 continue
 
@@ -268,38 +262,12 @@ def extract_codes(text):
             if len(code) < 6 or len(code) > 20:
                 continue
 
-            # Loại chuỗi có nhiều dấu _
+            # Không lấy chuỗi có quá nhiều _
             if code.count("_") >= 2:
                 continue
 
-            # Loại Reddit ID/token thường gặp
+            # Không lấy Reddit ID
             if code.startswith(("1V", "1W", "1X", "1Y", "1Z")):
-                continue
-
-            # Loại chuỗi có dạng ID ngẫu nhiên quá dài
-            if len(code) >= 15:
-                continue
-
-            # Loại một số từ thông thường
-            if code in {
-                "COMMENTS",
-                "SUBMITTED",
-                "PREVIEW",
-                "EXTERNAL",
-                "RECENTLY",
-                "ACTUALLY",
-                "AGAINST",
-                "NORMAL",
-                "SCHOOL",
-                "PLAYER",
-                "PLAYERS",
-                "DEVELOPERS",
-                "EVERYONE",
-                "CONTROL",
-                "PERFORM",
-                "WORKED",
-                "REPLACE",
-            }:
                 continue
 
             codes.add(code)
