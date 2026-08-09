@@ -215,128 +215,80 @@ def get_entry_time(entry):
 
 def extract_codes(text):
     """
-    Chỉ nhận code khi có dấu hiệu rõ ràng là redeem code.
-    Không quét tất cả ID/ngẫu nhiên trong RSS.
+    Lọc các chuỗi có khả năng là FC Mobile redeem code.
+    Ưu tiên chuỗi giống code thật, loại ID/token/chữ thông thường.
     """
 
     codes = set()
+
     text_upper = text.upper()
 
-    # Các từ chắc chắn không phải code
-    blacklist = BLACKLIST | {
-        "COMMENTS",
-        "SUBMITTED",
-        "PREVIEW",
-        "NORMAL",
-        "ACTUALLY",
-        "RECENTLY",
-        "OVERPRICED",
-        "DEVELOPERS",
-        "EVERYONE",
-        "AGAINST",
-        "EXTERNAL",
-        "SINGLE",
-        "CONTROL",
-        "ALWAYS",
-        "PEACEFULLY",
-        "MOBILE",
-        "FCMOBILE",
-        "FUTMOBILE",
-        "REDEEM",
-        "REWARD",
-        "REWARDS",
-        "CODE",
-        "CODES",
-    }
-
-    # Chỉ tìm code gần các từ khóa liên quan
-    code_context = re.compile(
-        r"(?:"
-        r"CODE"
-        r"|REDEEM"
-        r"|REDEEM CODE"
-        r"|REWARD CODE"
-        r"|GIFT CODE"
-        r"|NEW CODE"
-        r"|CODE IS"
-        r"|CODE:"
-        r")"
-        r".{0,80}?"
-        r"\b([A-Z0-9-]{6,24})\b",
-        re.IGNORECASE
-    )
-
-    matches = code_context.findall(text_upper)
+    matches = CODE_PATTERN.findall(text_upper)
 
     for code in matches:
 
-        code = code.strip("-")
+        code = code.strip()
 
-        if code in blacklist:
+        # 1. Không lấy blacklist
+        if code in BLACKLIST:
             continue
 
+        # 2. Không lấy chuỗi chỉ toàn số
         if code.isdigit():
             continue
 
-        if not any(c.isalpha() for c in code):
+        # 3. Phải có cả chữ và số
+        has_letter = any(c.isalpha() for c in code)
+        has_digit = any(c.isdigit() for c in code)
+
+        if not has_letter or not has_digit:
             continue
 
-        # Code phải có cả chữ và số
-        if not any(c.isalpha() for c in code):
+        # 4. Code quá ngắn
+        if len(code) < 6:
             continue
 
-        if not any(c.isdigit() for c in code):
+        # 5. Loại chuỗi có quá nhiều dấu _
+        if code.count("_") >= 2:
+            continue
+
+        # 6. Loại chuỗi giống Reddit ID
+        if code.startswith(("1V", "1W", "1X", "1Y", "1Z")):
+            continue
+
+        # 7. Loại chuỗi giống ID/token dài
+        if len(code) >= 14:
+            continue
+
+        # 8. Không lấy các từ phổ biến
+        common_words = {
+            "COMMENTS",
+            "SUBMITTED",
+            "PREVIEW",
+            "EXTERNAL",
+            "ACTUALLY",
+            "RECENTLY",
+            "AGAINST",
+            "NORMAL",
+            "SCHOOL",
+            "PLAYERS",
+            "PLAYER",
+            "DEVELOPERS",
+            "EVERYONE",
+            "ALWAYS",
+            "SINGLE",
+            "CONTROL",
+            "PERFORM",
+            "WORKED",
+            "REPLACE",
+        }
+
+        if code in common_words:
             continue
 
         codes.add(code)
 
     return codes
-
-# =========================================================
-# VALIDATE CODE
-# =========================================================
-
-def is_valid_code(code):
-
-    code = code.upper().strip()
-
-    # Độ dài
-    if len(code) < 6:
-        return False
-
-    if len(code) > 25:
-        return False
-
-    # Chỉ toàn số
-    if code.isdigit():
-        return False
-
-    # Phải có chữ
-    if not any(char.isalpha() for char in code):
-        return False
-
-    # Blacklist
-    if code in BLACKLIST:
-        return False
-
-    # Loại chuỗi kiểu URL
-    if "HTTP" in code:
-        return False
-
-    # Loại một số chuỗi rõ ràng không phải code
-    bad_words = [
-        "REDEEMCODE",
-        "REDEEMCODES",
-        "FCMOBILECODE",
-        "FCMOBILECODES",
-        "MOBILECODE",
-        "MOBILECODES",
-    ]
-
-    if code in bad_words:
-        return False
-
-    return True
 
 
 # =========================================================
