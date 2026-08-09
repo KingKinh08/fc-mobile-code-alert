@@ -101,15 +101,6 @@ def find_codes(text):
 
     text_upper = text.upper()
 
-    sentences = re.split(r"[.!?\n]+", text_upper)
-
-    keywords = [
-        "CODE",
-        "REDEEM",
-        "REWARD",
-        "GIFT",
-    ]
-
     blacklist = {
         "FCMOBILE",
         "FCMOBILE2025",
@@ -129,39 +120,38 @@ def find_codes(text):
         "FACEBOOK",
         "DISCORD",
         "YOUTUBE",
+        "COPY",
+        "NEW",
+        "GAMES",
+        "STARS",
+        "PLAYER",
+        "PLAYERS",
     }
 
-    for sentence in sentences:
+    matches = re.findall(
+        r"\b[A-Z0-9][A-Z0-9_-]{5,24}\b",
+        text_upper
+    )
 
-        # Chỉ tìm trong những đoạn có liên quan đến code
-        if not any(keyword in sentence for keyword in keywords):
+    for code in matches:
+
+        code = code.upper().strip()
+
+        # Không lấy số thuần
+        if code.isdigit():
             continue
 
-        matches = re.findall(
-            r"\b[A-Z0-9][A-Z0-9_-]{5,24}\b",
-            sentence
-        )
+        # Không lấy blacklist
+        if code in blacklist:
+            continue
 
-        for code in matches:
+        # Code phải có ít nhất một chữ
+        if not any(c.isalpha() for c in code):
+            continue
 
-            code = code.upper()
-
-            # Không nhận chuỗi chỉ toàn số
-            if code.isdigit():
-                continue
-
-            # Không nhận blacklist
-            if code in blacklist:
-                continue
-
-            # Phải có ít nhất một chữ
-            if not any(c.isalpha() for c in code):
-                continue
-
-            codes.add(code)
+        codes.add(code)
 
     return codes
-
 
 def main():
 
