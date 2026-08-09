@@ -293,23 +293,20 @@ def extract_codes(text):
 
     text_upper = text.upper()
 
-    # Không phải bài liên quan code thì bỏ luôn.
-    if not is_redeem_related(text_upper):
-        return set()
-
     codes = set()
 
-    # --------------------------------------------------------
-    # 1. Tìm code ngay sau các từ khóa thường gặp
-    # --------------------------------------------------------
-
-    context_patterns = [
-        r"(?:REDEEM\s*CODE|REDEEMCODE|CODE)\s*[:=\-]?\s*([A-Z0-9_-]{8,24})",
-        r"(?:GIFT\s*CODE|REWARD\s*CODE)\s*[:=\-]?\s*([A-Z0-9_-]{8,24})",
-        r"(?:CODE\s*IS|CODE\s*:\s*)([A-Z0-9_-]{8,24})",
+    # Chỉ tìm code xuất hiện sau các từ khóa rõ ràng.
+    patterns = [
+        r"\bREDEEM\s+CODE\s*[:=\-]?\s*([A-Z0-9_-]{6,24})",
+        r"\bREDEEM\s*[:=\-]?\s*([A-Z0-9_-]{6,24})",
+        r"\bCODE\s+IS\s*[:=\-]?\s*([A-Z0-9_-]{6,24})",
+        r"\bCODE\s*[:=\-]\s*([A-Z0-9_-]{6,24})",
+        r"\bCODES\s*[:=\-]\s*([A-Z0-9_\-,\s]{6,100})",
+        r"\bGIFT\s+CODE\s*[:=\-]?\s*([A-Z0-9_-]{6,24})",
+        r"\bREWARD\s+CODE\s*[:=\-]?\s*([A-Z0-9_-]{6,24})",
     ]
 
-    for pattern in context_patterns:
+    for pattern in patterns:
 
         matches = re.findall(
             pattern,
@@ -317,28 +314,53 @@ def extract_codes(text):
             flags=re.IGNORECASE
         )
 
-        for candidate in matches:
+        for match in matches:
 
-            candidate = candidate.strip()
+            # Trường hợp pattern CODES có thể trả về nhiều code
+            candidates = re.split(
+                r"[\s,]+",
+                match
+            )
 
-            if is_valid_code(candidate):
+            for candidate in candidates:
+
+                candidate = candidate.strip(
+                    " \t\n\r.,:;!?()[]{}<>\"'`"
+                )
+
+                if not candidate:
+                    continue
+
+                if len(candidate) < 6:
+                    continue
+
+                if len(candidate) > 24:
+                    continue
+
+                if candidate in BLACKLIST:
+                    continue
+
+                # Phải có chữ
+                if not any(
+                    char.isalpha()
+                    for char in candidate
+                ):
+                    continue
+
+                # Phải có số
+                if not any(
+                    char.isdigit()
+                    for char in candidate
+                ):
+                    continue
+
+                # Không phải URL
+                if "HTTP" in candidate:
+                    continue
+
                 codes.add(candidate)
 
-    # --------------------------------------------------------
-    # 2. Tìm các chuỗi có khả năng là code trong toàn bài
-    # --------------------------------------------------------
-
-    matches = CODE_PATTERN.findall(text_upper)
-
-    for candidate in matches:
-
-        candidate = candidate.strip()
-
-        if is_valid_code(candidate):
-            codes.add(candidate)
-
     return codes
-
 
 # ============================================================
 # REDDIT TIME
