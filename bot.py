@@ -215,49 +215,88 @@ def get_entry_time(entry):
 # =========================================================
 
 def extract_codes(text):
+    """
+    Tìm FC Mobile redeem code với bộ lọc chặt hơn.
+    Chỉ lấy code xuất hiện gần các từ khóa liên quan đến redeem code.
+    """
 
     codes = set()
 
     text_upper = text.upper()
 
-    # -----------------------------------------------------
-    # ƯU TIÊN CODE NẰM GẦN TỪ KHÓA
-    # -----------------------------------------------------
-
-    keyword_patterns = [
-        r"(?:REDEEM\s+CODE|REDEEM|NEW\s+CODE|CODE)"
-        r"\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{5,24})",
-
-        r"([A-Z0-9][A-Z0-9_-]{5,24})"
-        r"\s+(?:IS\s+THE\s+)?(?:NEW\s+)?CODE",
+    # Các từ khóa báo hiệu đoạn văn đang nói về redeem code
+    code_keywords = [
+        "REDEEM CODE",
+        "REDEEM",
+        "CODE",
+        "CODES",
+        "GIFT CODE",
+        "REWARD CODE",
+        "REWARD",
     ]
 
-    for pattern in keyword_patterns:
+    # Nếu bài hoàn toàn không nói về code thì bỏ qua
+    if not any(keyword in text_upper for keyword in code_keywords):
+        return codes
 
-        matches = re.findall(
-            pattern,
-            text_upper
-        )
-
-        for code in matches:
-
-            code = code.strip().upper()
-
-            if is_valid_code(code):
-                codes.add(code)
-
-    # -----------------------------------------------------
-    # KIỂM TRA THÊM CÁC CHUỖI VIẾT HOA
-    # -----------------------------------------------------
-
-    matches = CODE_PATTERN.findall(text_upper)
+    # Tìm các chuỗi có dạng code
+    matches = re.findall(
+        r"\b[A-Z0-9][A-Z0-9_-]{7,24}\b",
+        text_upper
+    )
 
     for code in matches:
 
-        code = code.strip().upper()
+        code = code.strip()
 
-        if is_valid_code(code):
-            codes.add(code)
+        # Blacklist
+        if code in BLACKLIST:
+            continue
+
+        # Không nhận số thuần
+        if code.isdigit():
+            continue
+
+        # Phải có chữ
+        if not any(c.isalpha() for c in code):
+            continue
+
+        # Không nhận các từ thông thường
+        if code in {
+            "COMMENTS",
+            "SUBMITTED",
+            "PREVIEW",
+            "RECENTLY",
+            "ACTUALLY",
+            "EVERYONE",
+            "AGAINST",
+            "EXTERNAL",
+            "NORMAL",
+            "WORKED",
+            "SINGLE",
+            "ALWAYS",
+            "PEACEFULLY",
+            "CONTROL",
+            "DEVELOPERS",
+            "PLAYERS",
+            "PLAYER",
+            "BICYCLE",
+            "SCHOOL",
+            "OVERPRICED",
+            "FINESSE",
+            "OWNERS",
+            "REPLACE",
+            "FOLLOWERS",
+            "FOLLOWER",
+        }:
+            continue
+
+        # Code hợp lệ phải có ít nhất 8 ký tự
+        if len(code) < 8:
+            continue
+
+        # Nếu code có dấu _ hoặc - thì vẫn cho phép
+        codes.add(code)
 
     return codes
 
